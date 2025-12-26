@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -9,7 +7,6 @@ const [orderNumber, setOrderNumber] = useState("");
 const [year, setYear] = useState("");
 const [make, setMake] = useState("");
 const [model, setModel] = useState("");
-
 const [saving, setSaving] = useState(false);
 const [msg, setMsg] = useState("");
 
@@ -17,7 +14,6 @@ async function handleSubmit(e) {
 e.preventDefault();
 setMsg("");
 
-// Validación básica
 if (!orderNumber.trim()) return setMsg("Falta Order Number");
 if (!year || Number.isNaN(Number(year))) return setMsg("Year inválido");
 if (!make.trim()) return setMsg("Falta Make");
@@ -30,11 +26,10 @@ orderNumber: orderNumber.trim(),
 year: Number(year),
 make: make.trim(),
 model: model.trim(),
-
-status: "pending", // default
-appointment: "none", // default
-declineReason: "", // default
-createdAt: serverTimestamp() // 🔥 importante para orderBy(createdAt)
+status: "pending",
+appointment: "none",
+declineReason: "",
+createdAt: serverTimestamp(),
 });
 
 setOrderNumber("");
@@ -50,10 +45,29 @@ setSaving(false);
 }
 
 return (
-<form onSubmit={handleSubmit} style={{ border: "1px solid #333", padding: 12, borderRadius: 8, marginBottom: 14 }}>
+<form
+onSubmit={handleSubmit}
+style={{
+border: "1px solid #333",
+borderRadius: 8,
+marginBottom: 14,
+display: "flex",
+flexDirection: "column",
+maxHeight: "75vh",
+overflow: "hidden",
+background: "#fff",
+}}
+>
+<div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
 <h3 style={{ marginTop: 0 }}>Nueva Orden</h3>
 
-<div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+<div
+style={{
+display: "grid",
+gap: 8,
+gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+}}
+>
 <label>
 Order #
 <input
@@ -95,8 +109,21 @@ style={{ width: "100%" }}
 />
 </label>
 </div>
+</div>
 
-<div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+<div
+style={{
+position: "sticky",
+bottom: 0,
+background: "#fff",
+borderTop: "1px solid #ddd",
+padding: 12,
+paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
+display: "flex",
+gap: 10,
+alignItems: "center",
+}}
+>
 <button type="submit" disabled={saving}>
 {saving ? "Guardando..." : "Crear orden"}
 </button>
@@ -105,3 +132,4 @@ style={{ width: "100%" }}
 </form>
 );
 }
+

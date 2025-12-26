@@ -13,7 +13,6 @@ updateDoc,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
-// Helpers UI
 function Badge({ status }) {
 const s = (status || "pending").toLowerCase();
 const map = {
@@ -39,21 +38,104 @@ return <span className="icon">{icons[name] || "•"}</span>;
 }
 
 function Modal({ open, title, children, onClose }) {
+useEffect(() => {
+if (!open) return;
+const prevOverflow = document.body.style.overflow;
+const prevPosition = document.body.style.position;
+const prevWidth = document.body.style.width;
+
+document.body.style.overflow = "hidden";
+document.body.style.position = "relative";
+document.body.style.width = "100%";
+
+return () => {
+document.body.style.overflow = prevOverflow;
+document.body.style.position = prevPosition;
+document.body.style.width = prevWidth;
+};
+}, [open]);
+
 if (!open) return null;
+
 return (
-<div className="modalBackdrop" onMouseDown={onClose}>
-<div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+<div
+className="modalOverlay"
+onMouseDown={onClose}
+role="dialog"
+aria-modal="true"
+>
+<div className="modal modalLarge" onMouseDown={(e) => e.stopPropagation()}>
 <div className="modalHeader">
+<div>
 <div className="modalTitle">{title}</div>
-<button className="btn ghost" onClick={onClose} aria-label="Close">
-<Icon name="x" /> Close
+</div>
+<button className="iconBtn" onClick={onClose} aria-label="Close">
+✕
 </button>
 </div>
-<div className="modalBody">{children}</div>
+
+<div className="modalBody" style={{ overflowY: "auto", flex: "1 1 auto" }}>
+{children}
 </div>
+</div>
+
+<style jsx>{`
+.modalOverlay {
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.45);
+display: flex;
+align-items: flex-end;
+justify-content: center;
+padding: 14px;
+z-index: 9999;
+}
+.modal {
+width: min(620px, 96vw);
+background: #fff;
+border-radius: 18px;
+box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+overflow: hidden;
+display: flex;
+flex-direction: column;
+max-height: 92vh;
+}
+.modalHeader {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 14px 16px;
+background: linear-gradient(
+90deg,
+rgba(255, 122, 0, 0.15),
+rgba(255, 154, 61, 0.1)
+);
+border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+flex: 0 0 auto;
+}
+.modalBody {
+padding: 14px 16px;
+-webkit-overflow-scrolling: touch;
+padding-bottom: calc(env(safe-area-inset-bottom) + 120px);
+}
+.modalTitle {
+font-weight: 1000;
+font-size: 16px;
+}
+.iconBtn {
+background: #fff;
+border: 1px solid rgba(0, 0, 0, 0.12);
+width: 38px;
+height: 38px;
+border-radius: 12px;
+cursor: pointer;
+font-size: 18px;
+}
+`}</style>
 </div>
 );
 }
+
 
 function NewOrderForm({ onCreate, onClose }) {
 const [orderNumber, setOrderNumber] = useState("");
@@ -72,7 +154,8 @@ clean(make).length > 0 &&
 clean(model).length > 0;
 
 return (
-<div className="form">
+<div className="form formScroll">
+<div className="formInner">
 <div className="grid2">
 <div className="field">
 <label>Order #</label>
@@ -116,14 +199,16 @@ placeholder="Camry"
 <div className="hint">
 Se guarda como <b>status: pending</b> y <b>appointment: none</b>.
 </div>
+</div>
 
-<div className="actionsRow">
-<button className="btn ghost" onClick={onClose}>
+<div className="actionsRow stickyFooter">
+<button className="btn ghost" onClick={onClose} type="button">
 Cancel
 </button>
 <button
 className="btn primary"
 disabled={!canSave}
+type="button"
 onClick={() =>
 onCreate({
 orderNumber: clean(orderNumber),
@@ -144,7 +229,6 @@ export default function DispatchBoard() {
 const [orders, setOrders] = useState([]);
 const [err, setErr] = useState("");
 
-// Modals
 const [openNew, setOpenNew] = useState(false);
 const [editApptOpen, setEditApptOpen] = useState(false);
 const [editApptValue, setEditApptValue] = useState("");
@@ -154,12 +238,10 @@ const [declineOpen, setDeclineOpen] = useState(false);
 const [declineReason, setDeclineReason] = useState("");
 const [declineOrderId, setDeclineOrderId] = useState(null);
 
-// Filters
 const [search, setSearch] = useState("");
 const [statusFilter, setStatusFilter] = useState("all");
 
 const q = useMemo(() => {
-// Nota: orderBy requiere que createdAt exista (tú ya lo estás guardando).
 return query(collection(db, "orders"), orderBy("createdAt", "desc"));
 }, []);
 
@@ -200,6 +282,7 @@ make: payload.make,
 model: payload.model,
 status: "pending",
 appointment: "none",
+declineReason: "",
 createdAt: serverTimestamp(),
 });
 setOpenNew(false);
@@ -210,7 +293,9 @@ setErr(String(e?.message || e));
 
 function openEditAppointment(order) {
 setEditApptOrderId(order.id);
-setEditApptValue(order.appointment && order.appointment !== "" ? order.appointment : "none");
+setEditApptValue(
+order.appointment && order.appointment !== "" ? order.appointment : "none"
+);
 setEditApptOpen(true);
 }
 
@@ -223,23 +308,81 @@ setDeclineOpen(true);
 const filtered = useMemo(() => {
 const s = (search || "").trim().toLowerCase();
 return orders.filter((o) => {
-const okStatus = statusFilter === "all" ? true : (o.status || "pending") === statusFilter;
-const haystack =
-`${o.orderNumber || ""} ${o.year || ""} ${o.make || ""} ${o.model || ""}`.toLowerCase();
+const okStatus =
+statusFilter === "all"
+? true
+: (o.status || "pending") === statusFilter;
+const haystack = `${o.orderNumber || ""} ${o.year || ""} ${o.make || ""} ${
+o.model || ""
+}`.toLowerCase();
 const okSearch = s.length === 0 ? true : haystack.includes(s);
 return okStatus && okSearch;
 });
 }, [orders, search, statusFilter]);
 
 function doLock() {
-// Si tu PinGate usa otra llave, cámbiala aquí.
-// Esta es una llave común que usamos en ejemplos:
 localStorage.removeItem("dmat_pin_ok");
 window.location.reload();
 }
 
 return (
 <div className="page">
+<style jsx global>{`
+.modalBackdrop {
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.45);
+z-index: 9999;
+display: flex;
+align-items: flex-end;
+justify-content: center;
+padding: 12px;
+}
+.modal {
+width: 100%;
+max-width: 720px;
+background: #fff;
+border-radius: 14px;
+overflow: hidden;
+display: flex;
+flex-direction: column;
+max-height: 92vh;
+}
+.modalHeader {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 10px;
+padding: 12px;
+border-bottom: 1px solid #eee;
+flex: 0 0 auto;
+}
+.modalBody {
+flex: 1 1 auto;
+overflow-y: auto;
+-webkit-overflow-scrolling: touch;
+padding: 12px;
+padding-bottom: calc(env(safe-area-inset-bottom) + 120px);
+}
+.formScroll {
+display: flex;
+flex-direction: column;
+min-height: 100%;
+}
+.formInner {
+flex: 1 1 auto;
+}
+.stickyFooter {
+position: sticky;
+bottom: 0;
+background: #fff;
+border-top: 1px solid #eee;
+padding-top: 10px;
+padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+z-index: 50;
+}
+`}</style>
+
 <div className="topbar">
 <div className="brand">
 <div className="title">DMAT Dispatch Board</div>
@@ -345,19 +488,25 @@ return (
 
 <div className="btnGrid">
 <button
-className={`btn mini ${status === "pending" ? "miniActive" : ""}`}
+className={`btn mini ${
+status === "pending" ? "miniActive" : ""
+}`}
 onClick={() => setStatus(o.id, "pending")}
 >
 Pending
 </button>
 <button
-className={`btn mini ${status === "scheduled" ? "miniActive" : ""}`}
+className={`btn mini ${
+status === "scheduled" ? "miniActive" : ""
+}`}
 onClick={() => setStatus(o.id, "scheduled")}
 >
 Scheduled
 </button>
 <button
-className={`btn mini ${status === "completed" ? "miniActive" : ""}`}
+className={`btn mini ${
+status === "completed" ? "miniActive" : ""
+}`}
 onClick={() => setStatus(o.id, "completed")}
 >
 Completed
@@ -366,7 +515,10 @@ Completed
 Decline + reason
 </button>
 
-<button className="btn mini ghost2" onClick={() => openEditAppointment(o)}>
+<button
+className="btn mini ghost2"
+onClick={() => openEditAppointment(o)}
+>
 <Icon name="edit" /> Edit appointment
 </button>
 </div>
@@ -381,18 +533,21 @@ No orders yet. Tap <b>New Order</b> to create one.
 ) : null}
 </div>
 
-{/* MODAL: New Order */}
-<Modal open={openNew} title="Create New Order" onClose={() => setOpenNew(false)}>
+<Modal
+open={openNew}
+title="Create New Order"
+onClose={() => setOpenNew(false)}
+>
 <NewOrderForm onCreate={createOrder} onClose={() => setOpenNew(false)} />
 </Modal>
 
-{/* MODAL: Edit appointment */}
 <Modal
 open={editApptOpen}
 title="Edit Appointment"
 onClose={() => setEditApptOpen(false)}
 >
-<div className="form">
+<div className="form formScroll">
+<div className="formInner">
 <div className="field">
 <label>Appointment</label>
 <input
@@ -404,17 +559,23 @@ placeholder='Ej: "12/26 3:30pm" o "none"'
 Puedes poner <b>none</b> si no tiene cita todavía.
 </div>
 </div>
+</div>
 
-<div className="actionsRow">
-<button className="btn ghost" onClick={() => setEditApptOpen(false)}>
+<div className="actionsRow stickyFooter">
+<button
+className="btn ghost"
+onClick={() => setEditApptOpen(false)}
+type="button"
+>
 Cancel
 </button>
 <button
 className="btn primary"
+type="button"
 onClick={async () => {
 try {
 if (!editApptOrderId) return;
-await setAppointment(editApptOrderId, (editApptValue || "none").trim());
+await setAppointment(editApptOrderId, (editApptValue || "").trim());
 setEditApptOpen(false);
 } catch (e) {
 setErr(String(e?.message || e));
@@ -427,384 +588,52 @@ setErr(String(e?.message || e));
 </div>
 </Modal>
 
-{/* MODAL: Decline reason */}
-<Modal open={declineOpen} title="Decline Order" onClose={() => setDeclineOpen(false)}>
-<div className="form">
+<Modal
+open={declineOpen}
+title="Decline Order"
+onClose={() => setDeclineOpen(false)}
+>
+<div className="form formScroll">
+<div className="formInner">
 <div className="field">
 <label>Reason</label>
-<textarea
-rows={3}
+<input
 value={declineReason}
 onChange={(e) => setDeclineReason(e.target.value)}
-placeholder="Ej: no disponible / no contestó / fuera de área..."
+placeholder="Ej: Customer no answer / Not in network / No keys..."
 />
+<div className="hint">
+Se guardará como <b>status: declined</b> con la razón.
+</div>
+</div>
 </div>
 
-<div className="actionsRow">
-<button className="btn ghost" onClick={() => setDeclineOpen(false)}>
+<div className="actionsRow stickyFooter">
+<button
+className="btn ghost"
+onClick={() => setDeclineOpen(false)}
+type="button"
+>
 Cancel
 </button>
 <button
 className="btn danger"
-disabled={(declineReason || "").trim().length === 0}
+type="button"
 onClick={async () => {
 try {
 if (!declineOrderId) return;
-await setDecline(declineOrderId, declineReason.trim());
+await setDecline(declineOrderId, (declineReason || "").trim());
 setDeclineOpen(false);
 } catch (e) {
 setErr(String(e?.message || e));
 }
 }}
 >
-<Icon name="warn" /> Decline
+<Icon name="check" /> Decline
 </button>
 </div>
 </div>
 </Modal>
-
-<style jsx>{`
-:global(body) {
-background: #0b1220;
-color: #e8eefc;
-}
-
-.page {
-min-height: 100vh;
-padding: 14px;
-max-width: 1100px;
-margin: 0 auto;
-font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-}
-
-.topbar {
-display: flex;
-align-items: flex-start;
-justify-content: space-between;
-gap: 12px;
-padding: 14px;
-border: 1px solid rgba(255, 255, 255, 0.08);
-background: rgba(255, 255, 255, 0.04);
-border-radius: 14px;
-backdrop-filter: blur(8px);
-}
-
-.brand .title {
-font-size: 18px;
-font-weight: 800;
-letter-spacing: 0.2px;
-}
-.brand .sub {
-margin-top: 4px;
-opacity: 0.85;
-font-size: 13px;
-}
-
-.topActions {
-display: flex;
-gap: 10px;
-flex-wrap: wrap;
-justify-content: flex-end;
-}
-
-.controls {
-margin-top: 12px;
-display: flex;
-gap: 10px;
-flex-direction: column;
-}
-
-.searchBox input {
-width: 100%;
-padding: 12px 12px;
-border-radius: 12px;
-background: rgba(255, 255, 255, 0.06);
-border: 1px solid rgba(255, 255, 255, 0.10);
-color: #e8eefc;
-outline: none;
-}
-
-.seg {
-display: grid;
-grid-template-columns: repeat(5, 1fr);
-gap: 8px;
-}
-.segBtn {
-padding: 10px 10px;
-border-radius: 12px;
-background: rgba(255, 255, 255, 0.04);
-border: 1px solid rgba(255, 255, 255, 0.10);
-color: #e8eefc;
-font-weight: 700;
-font-size: 12px;
-cursor: pointer;
-}
-.segBtn.active {
-background: rgba(110, 168, 255, 0.18);
-border-color: rgba(110, 168, 255, 0.45);
-}
-
-.alert {
-margin-top: 12px;
-padding: 12px;
-border-radius: 12px;
-background: rgba(255, 90, 90, 0.12);
-border: 1px solid rgba(255, 90, 90, 0.35);
-color: #ffd1d1;
-}
-
-.grid {
-margin-top: 12px;
-display: grid;
-grid-template-columns: 1fr;
-gap: 12px;
-}
-
-.card {
-border-radius: 16px;
-border: 1px solid rgba(255, 255, 255, 0.08);
-background: rgba(255, 255, 255, 0.04);
-padding: 14px;
-box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
-}
-
-.cardHead {
-display: flex;
-justify-content: space-between;
-gap: 10px;
-align-items: flex-start;
-}
-
-.orderLine {
-font-size: 13px;
-opacity: 0.9;
-}
-.muted {
-opacity: 0.7;
-}
-.orderNum {
-font-weight: 900;
-}
-.vehicle {
-margin-top: 2px;
-font-size: 15px;
-font-weight: 800;
-}
-
-.meta {
-margin-top: 10px;
-display: grid;
-gap: 6px;
-padding: 10px;
-border-radius: 12px;
-background: rgba(0, 0, 0, 0.18);
-border: 1px solid rgba(255, 255, 255, 0.06);
-}
-.metaRow {
-display: flex;
-justify-content: space-between;
-gap: 10px;
-font-size: 13px;
-}
-.metaKey {
-opacity: 0.75;
-}
-.metaVal {
-font-weight: 800;
-text-align: right;
-word-break: break-word;
-}
-
-.btnGrid {
-margin-top: 10px;
-display: grid;
-grid-template-columns: 1fr 1fr;
-gap: 8px;
-}
-
-.btn {
-border-radius: 12px;
-border: 1px solid rgba(255, 255, 255, 0.12);
-background: rgba(255, 255, 255, 0.06);
-color: #e8eefc;
-padding: 11px 12px;
-font-weight: 800;
-cursor: pointer;
-transition: 0.15s;
-user-select: none;
-}
-.btn:hover {
-transform: translateY(-1px);
-border-color: rgba(255, 255, 255, 0.22);
-}
-.btn:disabled {
-opacity: 0.45;
-cursor: not-allowed;
-transform: none;
-}
-
-.btn.primary {
-background: rgba(110, 168, 255, 0.18);
-border-color: rgba(110, 168, 255, 0.45);
-}
-
-.btn.danger {
-background: rgba(255, 90, 90, 0.12);
-border-color: rgba(255, 90, 90, 0.45);
-}
-
-.btn.ghost {
-background: transparent;
-}
-.btn.ghost2 {
-grid-column: 1 / -1;
-background: rgba(255, 255, 255, 0.03);
-}
-
-.btn.mini {
-padding: 10px 10px;
-font-size: 13px;
-}
-.miniActive {
-background: rgba(140, 255, 195, 0.10);
-border-color: rgba(140, 255, 195, 0.35);
-}
-
-.badge {
-font-size: 12px;
-font-weight: 900;
-padding: 8px 10px;
-border-radius: 999px;
-border: 1px solid rgba(255, 255, 255, 0.14);
-background: rgba(255, 255, 255, 0.05);
-display: inline-flex;
-align-items: center;
-gap: 6px;
-}
-.bPending {
-background: rgba(255, 215, 90, 0.12);
-border-color: rgba(255, 215, 90, 0.35);
-}
-.bScheduled {
-background: rgba(110, 168, 255, 0.15);
-border-color: rgba(110, 168, 255, 0.38);
-}
-.bCompleted {
-background: rgba(140, 255, 195, 0.12);
-border-color: rgba(140, 255, 195, 0.35);
-}
-.bDeclined {
-background: rgba(255, 90, 90, 0.12);
-border-color: rgba(255, 90, 90, 0.38);
-}
-
-.icon {
-margin-right: 6px;
-}
-
-.empty {
-opacity: 0.8;
-padding: 18px;
-border-radius: 14px;
-border: 1px dashed rgba(255, 255, 255, 0.18);
-background: rgba(255, 255, 255, 0.03);
-text-align: center;
-}
-
-/* Modal */
-.modalBackdrop {
-position: fixed;
-inset: 0;
-background: rgba(0, 0, 0, 0.55);
-display: flex;
-align-items: center;
-justify-content: center;
-padding: 16px;
-z-index: 50;
-}
-.modal {
-width: 100%;
-max-width: 620px;
-border-radius: 16px;
-border: 1px solid rgba(255, 255, 255, 0.10);
-background: rgba(10, 16, 30, 0.96);
-box-shadow: 0 20px 40px rgba(0, 0, 0, 0.40);
-overflow: hidden;
-}
-.modalHeader {
-display: flex;
-justify-content: space-between;
-align-items: center;
-gap: 10px;
-padding: 14px;
-border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.modalTitle {
-font-weight: 900;
-font-size: 16px;
-}
-.modalBody {
-padding: 14px;
-}
-
-.form {
-display: grid;
-gap: 12px;
-}
-.grid2 {
-display: grid;
-gap: 10px;
-grid-template-columns: 1fr;
-}
-.field label {
-display: block;
-font-size: 12px;
-opacity: 0.8;
-margin-bottom: 6px;
-font-weight: 800;
-}
-.field input,
-.field textarea {
-width: 100%;
-padding: 12px 12px;
-border-radius: 12px;
-background: rgba(255, 255, 255, 0.06);
-border: 1px solid rgba(255, 255, 255, 0.10);
-color: #e8eefc;
-outline: none;
-}
-.hint {
-font-size: 12px;
-opacity: 0.75;
-}
-.actionsRow {
-display: flex;
-justify-content: flex-end;
-gap: 10px;
-flex-wrap: wrap;
-margin-top: 4px;
-}
-
-/* Desktop improvements */
-@media (min-width: 860px) {
-.controls {
-flex-direction: row;
-align-items: center;
-}
-.searchBox {
-flex: 1;
-}
-.seg {
-grid-template-columns: repeat(5, auto);
-}
-.grid {
-grid-template-columns: 1fr 1fr;
-}
-.grid2 {
-grid-template-columns: 1fr 1fr;
-}
-}
-`}</style>
 </div>
 );
 }
